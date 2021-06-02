@@ -1,4 +1,4 @@
-module github.com/ego-plugin/erestful
+module github.com/ego-plugin/server/erestful
 
 go 1.16
 
