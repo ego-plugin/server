@@ -17,6 +17,8 @@ type Config struct {
 	EnableGzip				bool		  //  开启gzip 压缩
 	SlowLogThreshold        time.Duration // 服务慢日志，默认500ms
 
+	EnableSwagger 			bool
+
 	WebsocketHandshakeTimeout  time.Duration // 握手时间
 	WebsocketReadBufferSize    int
 	WebsocketWriteBufferSize   int
