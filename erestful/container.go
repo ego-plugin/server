@@ -61,5 +61,9 @@ func (c *Container) Build(options ...Option) *Component {
 	if c.config.EnableTraceInterceptor && opentracing.IsGlobalTracerRegistered() {
 		server.Filter(traceServerInterceptor())
 	}
+
+	if c.config.EnableSwagger {
+		server.Add(NewSwaggerService(server.Container))
+	}
 	return server
 }
