@@ -3,6 +3,7 @@ module github.com/ego-plugin/server/erestful
 go 1.16
 
 require (
+	github.com/emicklei/go-restful-openapi/v2 v2.3.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.5.1
 	github.com/go-resty/resty/v2 v2.6.0 // indirect
 	github.com/gorilla/websocket v1.4.2
