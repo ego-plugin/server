@@ -33,25 +33,28 @@ func NewSwaggerService(container *restful.Container) *restful.WebService {
 }
 
 func enrichSwaggerObject(swo *spec.Swagger) {
-	swo.BasePath = ""
 	swo.Info = &spec.Info{
 		InfoProps: spec.InfoProps{
-			Title:       "API",
-			Description: "API Development Document",
+			Title:       "ApiService",
+			Description: "Resource for managing API",
 			Contact: &spec.ContactInfo{
-				Name:  "ego",
-				Email: "system18188@gmail.com",
-				URL:   "https://swagger.io/",
+				ContactInfoProps: spec.ContactInfoProps{
+					Name:  "NETBO",
+					Email: "system18188@gmail.com",
+					URL:   "http://swagger.org",
+				},
 			},
 			License: &spec.License{
-				Name: "MIT",
-				URL:  "http://mit.org",
+				LicenseProps: spec.LicenseProps{
+					Name: "MIT",
+					URL:  "http://mit.org",
+				},
 			},
-			Version: "2.0.0",
+			Version: "1.0.0",
 		},
 	}
-	// swo.SecurityDefinitions = map[string]*spec.SecurityScheme{
-	//			"jwt": spec.APIKeyAuth("Authorization", "header"),
-	//		}
+	swo.Tags = []spec.Tag{spec.Tag{TagProps: spec.TagProps{
+		Name:        "API",
+		Description: "Managing api"}}}
 }
 
