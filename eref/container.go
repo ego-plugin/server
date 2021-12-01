@@ -1,6 +1,7 @@
-package erestful
+package eref
 
 import (
+	"github.com/emicklei/go-restful/v3"
 	"github.com/gotomicro/ego/core/econf"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/core/util/xnet"
@@ -47,23 +48,22 @@ func Load(key string) *Container {
 }
 
 // Build 构建组件
-func (c *Container) Build(options ...Option) *Component {
-	for _, option := range options {
-		option(c)
-	}
+func (c *Container) Build() *Component {
+
 	server := newComponent(c.name, c.config, c.logger)
-	server.Filter(recoverMiddleware(c.logger, c.config))
+
+	restful.Filter(recoverMiddleware(c.logger, c.config))
 
 	if c.config.EnableMetricInterceptor {
-		server.Filter(metricServerInterceptor())
+		restful.Filter(metricServerInterceptor())
 	}
 
 	if c.config.EnableTraceInterceptor && opentracing.IsGlobalTracerRegistered() {
-		server.Filter(traceServerInterceptor())
+		restful.Filter(traceServerInterceptor())
 	}
 
 	if c.config.EnableSwagger {
-		server.Add(NewSwaggerService(server.Container))
+		SwaggerService()
 	}
 	return server
 }

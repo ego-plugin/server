@@ -1,4 +1,4 @@
-package erestful
+package eref
 
 import (
 	"bytes"
@@ -45,7 +45,7 @@ func recoverMiddleware(logger *elog.Component, config *Config) restful.FilterFun
 
 			fields = append(fields,
 				elog.FieldCost(cost),
-				elog.FieldType(req.Request.Method), // GET, POST
+				elog.FieldType(req.Request.Method),     // GET, POST
 				elog.FieldMethod(req.Request.URL.Path), // 完整路径
 				elog.FieldAddr(req.Request.URL.Path),
 				elog.FieldIP(clientIP(req)),
@@ -204,6 +204,7 @@ func clientIP(req *restful.Request) string {
 	}
 	return ra
 }
+
 // 获取对端ip
 func getPeerIP(addr string) string {
 	addSlice := strings.Split(addr, ":")

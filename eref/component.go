@@ -1,11 +1,11 @@
-package erestful
+package eref
 
 import (
 	"context"
 	"fmt"
+	"github.com/emicklei/go-restful/v3"
 	"github.com/gotomicro/ego/core/constant"
 	"github.com/gotomicro/ego/core/elog"
-	restful "github.com/emicklei/go-restful/v3"
 	"github.com/gotomicro/ego/server"
 	"net"
 	"net/http"
@@ -14,30 +14,18 @@ import (
 )
 
 // PackageName 包名
-const PackageName = "server.erestful"
+const PackageName = "server.eref"
 
-// Component ...
+// Component 构件
 type Component struct {
-	mu     sync.Mutex
-	name   string
-	config *Config
-	logger *elog.Component
-	*restful.Container
+	mu     sync.Mutex      // 互拆锁
+	name   string          // 构件名称
+	config *Config         // 配置
+	logger *elog.Component // 日记
 
-	Server           *http.Server
-	listener         net.Listener
+	Server           *http.Server      // HTTP 服务
+	listener         net.Listener      // 网络地址
 	routerCommentMap map[string]string // router的中文注释，非并发安全
-}
-
-func newComponent(name string, config *Config, logger *elog.Component) *Component {
-	return &Component{
-		name:             name,
-		config:           config,
-		logger:           logger,
-		Container:          restful.DefaultContainer,
-		listener:         nil,
-		routerCommentMap: make(map[string]string),
-	}
 }
 
 // Name 配置名称
@@ -54,7 +42,7 @@ func (c *Component) PackageName() string {
 func (c *Component) Init() error {
 	listener, err := net.Listen("tcp", c.config.Address())
 	if err != nil {
-		c.logger.Panic("new erestful server err", elog.FieldErrKind("listen err"), elog.FieldErr(err))
+		c.logger.Panic("new eref server err", elog.FieldErrKind("listen err"), elog.FieldErr(err))
 	}
 	c.config.Port = listener.Addr().(*net.TCPAddr).Port
 	c.listener = listener
@@ -68,7 +56,7 @@ func (c *Component) RegisterRouteComment(method, path, comment string) {
 
 // Start implements server.Component interface.
 func (c *Component) Start() error {
-	for _, ws := range c.RegisteredWebServices() {
+	for _, ws := range restful.DefaultContainer.RegisteredWebServices() {
 		for _, route := range ws.Routes() {
 			info, flag := c.routerCommentMap[commentUniqKey(route.Method, route.Path)]
 			// 如果有注释，日志打出来
@@ -83,7 +71,7 @@ func (c *Component) Start() error {
 	c.mu.Lock()
 	c.Server = &http.Server{
 		Addr:    c.config.Address(),
-		Handler: c.Container,
+		Handler: restful.DefaultContainer,
 	}
 	c.mu.Unlock()
 	err := c.Server.Serve(c.listener)
@@ -94,7 +82,7 @@ func (c *Component) Start() error {
 }
 
 // Stop implements server.Component interface
-// it will terminate gin server immediately
+// it will terminate go-restful server immediately
 func (c *Component) Stop() error {
 	c.mu.Lock()
 	err := c.Server.Close()
@@ -103,7 +91,7 @@ func (c *Component) Stop() error {
 }
 
 // GracefulStop implements server.Component interface
-// it will stop gin server gracefully
+// it will stop go-restful server gracefully
 func (c *Component) GracefulStop(ctx context.Context) error {
 	c.mu.Lock()
 	err := c.Server.Shutdown(ctx)
@@ -119,6 +107,17 @@ func (c *Component) Info() *server.ServiceInfo {
 		server.WithKind(constant.ServiceProvider),
 	)
 	return &info
+}
+
+// newComponent 新建一个构件
+func newComponent(name string, config *Config, logger *elog.Component) *Component {
+	return &Component{
+		name:             name,
+		config:           config,
+		logger:           logger,
+		listener:         nil,
+		routerCommentMap: make(map[string]string),
+	}
 }
 
 func commentUniqKey(method, path string) string {

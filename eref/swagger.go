@@ -1,7 +1,7 @@
-package erestful
+package eref
 
 import (
-	"github.com/ego-plugin/server/erestful/staticswagger"
+	"github.com/ego-plugin/server/eref/staticswagger"
 	restfulspec "github.com/emicklei/go-restful-openapi/v2"
 	"github.com/emicklei/go-restful/v3"
 	"github.com/go-openapi/spec"
@@ -10,14 +10,14 @@ import (
 	"strings"
 )
 
-// NewSwaggerService API文档服务
-func NewSwaggerService(container *restful.Container) *restful.WebService {
+// SwaggerService API文档服务
+func SwaggerService() {
 	config := restfulspec.Config{
-		WebServices:                   container.RegisteredWebServices(),
+		WebServices:                   restful.RegisteredWebServices(),
 		APIPath:                       "/swagger.json",
 		PostBuildSwaggerObjectHandler: enrichSwaggerObject,
 	}
-	container.ServeMux.Handle("/swagger/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	restful.DefaultContainer.ServeMux.Handle("/swagger/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if p := strings.TrimPrefix(r.URL.Path, "/swagger"); len(p) < len(r.URL.Path) {
 			r2 := new(http.Request)
 			*r2 = *r
@@ -29,7 +29,7 @@ func NewSwaggerService(container *restful.Container) *restful.WebService {
 			http.NotFound(w, r)
 		}
 	}))
-	return restfulspec.NewOpenAPIService(config)
+	restful.Add(restfulspec.NewOpenAPIService(config))
 }
 
 func enrichSwaggerObject(swo *spec.Swagger) {
@@ -57,4 +57,3 @@ func enrichSwaggerObject(swo *spec.Swagger) {
 		Name:        "API",
 		Description: "Managing api"}}}
 }
-

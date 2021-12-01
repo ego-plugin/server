@@ -1,10 +1,10 @@
-package erestful
+package eref
 
 import (
 	"fmt"
-	"time"
 	"github.com/gotomicro/ego/core/eflag"
 	"github.com/gotomicro/ego/core/util/xtime"
+	"time"
 )
 
 // Config HTTP config
@@ -14,10 +14,10 @@ type Config struct {
 	EnableMetricInterceptor bool          // 是否开启监控，默认开启
 	EnableTraceInterceptor  bool          // 是否开启链路追踪，默认开启
 	EnableLocalMainIP       bool          // 自动获取ip地址
-	EnableGzip				bool		  //  开启gzip 压缩
+	EnableGzip              bool          //  开启gzip 压缩
 	SlowLogThreshold        time.Duration // 服务慢日志，默认500ms
 
-	EnableSwagger 			bool
+	EnableSwagger bool // 启用API文档
 
 	WebsocketHandshakeTimeout  time.Duration // 握手时间
 	WebsocketReadBufferSize    int
@@ -26,7 +26,7 @@ type Config struct {
 	EnableWebsocketCheckOrigin bool // 是否支持跨域
 }
 
-// DefaultConfig ...
+// DefaultConfig 反回默认配置
 func DefaultConfig() *Config {
 	return &Config{
 		Host:                       eflag.String("host"),
@@ -38,7 +38,7 @@ func DefaultConfig() *Config {
 	}
 }
 
-// Address ...
+// Address 反回地址
 func (config *Config) Address() string {
 	return fmt.Sprintf("%s:%d", config.Host, config.Port)
 }
