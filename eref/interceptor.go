@@ -86,6 +86,7 @@ func recoverMiddleware(logger *elog.Component, config *Config) restful.FilterFun
 					zap.ByteString("stack", stackInfo),
 					elog.FieldErrAny(rec),
 					elog.FieldCode(int32(resp.StatusCode())),
+					elog.FieldUniformCode(int32(resp.StatusCode())),
 				)
 				logger.Error("access", fields...)
 				return
@@ -93,7 +94,7 @@ func recoverMiddleware(logger *elog.Component, config *Config) restful.FilterFun
 
 			fields = append(fields,
 				elog.FieldEvent(event),
-				elog.FieldErrAny(resp.Error().Error()),
+				elog.FieldErrAny(""),
 				elog.FieldCode(int32(resp.StatusCode())),
 			)
 			logger.Info("access", fields...)
@@ -168,7 +169,7 @@ func metricServerInterceptor() restful.FilterFunction {
 		beg := time.Now()
 		chain.ProcessFilter(req, resp)
 		emetric.ServerHandleHistogram.Observe(time.Since(beg).Seconds(), emetric.TypeHTTP, req.Request.Method+"."+req.Request.URL.Path, extractAPP(req))
-		emetric.ServerHandleCounter.Inc(emetric.TypeHTTP, req.Request.Method+"."+req.Request.URL.Path, extractAPP(req), http.StatusText(resp.StatusCode()))
+		emetric.ServerHandleCounter.Inc(emetric.TypeHTTP, req.Request.Method+"."+req.Request.URL.Path, extractAPP(req), http.StatusText(resp.StatusCode()), http.StatusText(resp.StatusCode()))
 	}
 }
 
