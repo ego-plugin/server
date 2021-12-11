@@ -195,10 +195,11 @@ func traceServerInterceptor() restful.FilterFunction {
 
 // IP returns the IP address of request.
 func clientIP(req *restful.Request) string {
+	var ip string
 	ra := req.Request.RemoteAddr
-	if ip := req.HeaderParameter("X-Forwarded-For"); ip != "" {
+	if ip = req.HeaderParameter("X-Forwarded-For"); ip != "" {
 		ra = strings.Split(ip, ", ")[0]
-	} else if ip := req.HeaderParameter("X-Real-IP"); ip != "" {
+	} else if ip = req.HeaderParameter("X-Real-IP"); ip != "" {
 		ra = ip
 	} else {
 		ra, _, _ = net.SplitHostPort(ra)
