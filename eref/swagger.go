@@ -53,7 +53,7 @@ func enrichSwaggerObject(swo *spec.Swagger) {
 			Version: "1.0.0",
 		},
 	}
-	swo.Tags = []spec.Tag{spec.Tag{TagProps: spec.TagProps{
-		Name:        "API",
-		Description: "Managing api"}}}
+	//swo.Tags = []spec.Tag{spec.Tag{TagProps: spec.TagProps{
+	//	Name:        "API Doc",
+	//	Description: "Managing api"}}}
 }
