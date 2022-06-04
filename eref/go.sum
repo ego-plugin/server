@@ -238,6 +238,8 @@ github.com/gorilla/mux v1.6.2/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2z
 github.com/gorilla/mux v1.7.3/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2zaAs=
 github.com/gorilla/websocket v0.0.0-20170926233335-4201258b820c/go.mod h1:E7qHFY5m1UJ88s3WnNqhKjPHQ0heANvMoAMk2YaljkQ=
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
+github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWmnc=
+github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/gotomicro/ego v0.7.1 h1:wROePvVVCOGopc0ZXePoMsAf9Eg1imxv0cj0ujGixww=
 github.com/gotomicro/ego v0.7.1/go.mod h1:BuMxQAf4d7DOHyswPO/VWTp557ImajM0TAz71J71fXA=
 github.com/gotomicro/ego v1.1.2 h1:ZE8vtEkQu1RJDc7NvpwqxtPP5brPkevmeC4PUereOXo=

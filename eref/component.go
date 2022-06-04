@@ -16,6 +16,8 @@ import (
 // PackageName 包名
 const PackageName = "server.eref"
 
+var comp *Component
+
 // Component 构件
 type Component struct {
 	mu     sync.Mutex      // 互拆锁
@@ -30,7 +32,7 @@ type Component struct {
 
 // newComponent 新建一个构件
 func newComponent(name string, config *Config, logger *elog.Component) *Component {
-	comp := &Component{
+	comp = &Component{
 		name:             name,
 		config:           config,
 		logger:           logger,
