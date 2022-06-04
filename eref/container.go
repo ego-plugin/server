@@ -49,11 +49,14 @@ func Load(key string) *Container {
 
 // Build 构建组件
 func (c *Container) Build() *Component {
-
 	server := newComponent(c.name, c.config, c.logger)
-
+	// 修正反代理IP
+	restful.Filter(ProxyIpMiddleware(c.logger, c.config))
+	// 错误恢复
 	restful.Filter(recoverMiddleware(c.logger, c.config))
-
+	if c.config.ContextTimeout > 0 {
+		restful.Filter(timeoutMiddleware(c.config.ContextTimeout))
+	}
 	if c.config.EnableMetricInterceptor {
 		restful.Filter(metricServerInterceptor())
 	}
@@ -62,8 +65,5 @@ func (c *Container) Build() *Component {
 		restful.Filter(traceServerInterceptor())
 	}
 
-	if c.config.EnableSwagger {
-		SwaggerService()
-	}
 	return server
 }

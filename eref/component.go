@@ -2,13 +2,18 @@ package eref
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"github.com/emicklei/go-restful/v3"
 	"github.com/gotomicro/ego/core/constant"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/server"
+	"github.com/pkg/errors"
+	"io/fs"
 	"net"
 	"net/http"
+	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -25,7 +30,30 @@ type Component struct {
 
 	Server           *http.Server      // HTTP 服务
 	listener         net.Listener      // 网络地址
-	routerCommentMap map[string]string // router的中文注释，非并发安全
+	routerCommentMap map[string]string // router 的中文注释，非并发安全
+	embedWrapper     *EmbedWrapper
+}
+
+// newComponent 新建一个构件
+func newComponent(name string, config *Config, logger *elog.Component) *Component {
+	comp := &Component{
+		name:             name,
+		config:           config,
+		logger:           logger,
+		listener:         nil,
+		routerCommentMap: make(map[string]string),
+	}
+
+	if config.EmbedPath != "" {
+		comp.embedWrapper = &EmbedWrapper{
+			embedFs: config.embedFs,
+			path:    config.EmbedPath,
+		}
+	}
+	// 注册解析类型
+	restful.RegisterEntityAccessor(MIME_MSGPACK, NewEntityAccessorMsgPack())
+	restful.RegisterEntityAccessor(restful.MIME_JSON, NewEntityJsonAccess())
+	return comp
 }
 
 // Name 配置名称
@@ -40,12 +68,12 @@ func (c *Component) PackageName() string {
 
 // Init 初始化
 func (c *Component) Init() error {
-	listener, err := net.Listen("tcp", c.config.Address())
+	var err error
+	c.listener, err = net.Listen("tcp", c.config.Address())
 	if err != nil {
 		c.logger.Panic("new eref server err", elog.FieldErrKind("listen err"), elog.FieldErr(err))
 	}
-	c.config.Port = listener.Addr().(*net.TCPAddr).Port
-	c.listener = listener
+	c.config.Port = c.listener.Addr().(*net.TCPAddr).Port
 	return nil
 }
 
@@ -109,17 +137,37 @@ func (c *Component) Info() *server.ServiceInfo {
 	return &info
 }
 
-// newComponent 新建一个构件
-func newComponent(name string, config *Config, logger *elog.Component) *Component {
-	return &Component{
-		name:             name,
-		config:           config,
-		logger:           logger,
-		listener:         nil,
-		routerCommentMap: make(map[string]string),
-	}
+// HTTPEmbedFs http的文件系统
+func (c *Component) HTTPEmbedFs() http.FileSystem {
+	return http.FS(c.embedWrapper)
 }
 
 func commentUniqKey(method, path string) string {
 	return fmt.Sprintf("%s@%s", strings.ToLower(method), path)
+}
+
+// GetEmbedWrapper http的文件系统
+func (c *Component) GetEmbedWrapper() *EmbedWrapper {
+	return c.embedWrapper
+}
+
+// Listener listener信息
+func (c *Component) Listener() net.Listener {
+	return c.listener
+}
+
+// EmbedWrapper 嵌入普通的静态资源的wrapper
+type EmbedWrapper struct {
+	embedFs embed.FS // 静态资源
+	path    string   // 设置embed文件到静态资源的相对路径，也就是embed注释里的路径
+}
+
+// Open 静态资源被访问的核心逻辑
+func (e *EmbedWrapper) Open(name string) (fs.File, error) {
+	if filepath.Separator != '/' && strings.ContainsRune(name, filepath.Separator) {
+		return nil, errors.New("http: invalid character in file path")
+	}
+	fullName := filepath.ToSlash(path.Join(e.path, path.Clean("/"+name)))
+	file, err := e.embedFs.Open(fullName)
+	return file, err
 }

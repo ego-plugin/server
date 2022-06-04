@@ -2,15 +2,21 @@ package eref
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
-	restful "github.com/emicklei/go-restful/v3"
+	"github.com/emicklei/go-restful/v3"
 	"github.com/gotomicro/ego/core/eapp"
 	"github.com/gotomicro/ego/core/elog"
 	"github.com/gotomicro/ego/core/emetric"
 	"github.com/gotomicro/ego/core/etrace"
 	"github.com/opentracing/opentracing-go"
-	"github.com/uber/jaeger-client-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -32,9 +38,74 @@ func extractAPP(req *restful.Request) string {
 	return req.Request.Header.Get("app")
 }
 
+type resWriter struct {
+	restful.EntityReaderWriter
+	body *bytes.Buffer
+}
+
+func (w *resWriter) Write(resp *restful.Response, status int, v interface{}) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	if _, err = w.body.Write(b); err != nil {
+		return err
+	}
+	return w.EntityReaderWriter.Write(resp, status, v)
+}
+
+// timeout middleware wraps the request context with a timeout
+func timeoutMiddleware(timeout time.Duration) restful.FilterFunction {
+	return Filter(func(c FilterContext) {
+		// 若无自定义超时设置，默认设置超时
+		_, ok := c.Req().Context().Deadline()
+		if ok {
+			c.ProcessFilter()
+			return
+		}
+
+		// wrap the request context with a timeout
+		ctx, cancel := context.WithTimeout(c.Req().Context(), timeout)
+		defer func() {
+			// check if context timeout was reached
+			if ctx.Err() == context.DeadlineExceeded {
+				// write response and abort the request
+				c.Response.WriteHeader(http.StatusGatewayTimeout)
+				c.FilterChain.Index = 63
+			}
+			//cancel to clear resources after finished
+			cancel()
+		}()
+
+		// replace request with context wrapped request
+		c.Request.Request = c.Req().WithContext(ctx)
+		c.ProcessFilter()
+	})
+}
+
 // recoverMiddleware 恢复拦截器，记录500信息，以及慢日志信息
 func recoverMiddleware(logger *elog.Component, config *Config) restful.FilterFunction {
-	return func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
+	return Filter(func(ctx FilterContext) {
+		var rb bytes.Buffer
+		var rw *resWriter
+		var ok bool
+		var entity restful.EntityReaderWriter
+
+		config.mu.RLock()
+		// 保存body
+		ctx.Req().Body = ioutil.NopCloser(io.TeeReader(ctx.Req().Body, &rb))
+		ctx.SetAttribute("body", rb.Bytes())
+
+		if config.EnableAccessInterceptorRes {
+			if entity, ok = ctx.Response.EntityWriter(); ok {
+				rw = &resWriter{
+					EntityReaderWriter: entity,
+					body:               new(bytes.Buffer),
+				}
+			}
+		}
+		config.mu.RUnlock()
+
 		var beg = time.Now()
 		// 为了性能考虑，如果要加日志字段，需要改变slice大小
 		var fields = make([]elog.Field, 0, 15)
@@ -44,18 +115,34 @@ func recoverMiddleware(logger *elog.Component, config *Config) restful.FilterFun
 			cost := time.Since(beg)
 
 			fields = append(fields,
+				elog.FieldType("http"), // GET, POST
 				elog.FieldCost(cost),
-				elog.FieldType(req.Request.Method),     // GET, POST
-				elog.FieldMethod(req.Request.URL.Path), // 完整路径
-				elog.FieldAddr(req.Request.URL.Path),
-				elog.FieldIP(clientIP(req)),
-				elog.FieldSize(int32(resp.ContentLength())),
-				elog.FieldPeerIP(getPeerIP(req.Request.RemoteAddr)),
+				elog.FieldMethod(ctx.Req().Method+"."+ctx.Request.SelectedRoutePath()), // 完整路径
+				elog.FieldAddr(ctx.Req().URL.RequestURI()),
+				elog.FieldIP(ctx.ClientIP()),
+				elog.FieldSize(int32(ctx.Response.ContentLength())),
+				elog.FieldPeerIP(ctx.GetPeerIP()),
 			)
-
+			// 是否开启链路追踪，默认开启
 			if config.EnableTraceInterceptor && opentracing.IsGlobalTracerRegistered() {
-				fields = append(fields, elog.FieldTid(etrace.ExtractTraceID(req.Request.Context())))
+				fields = append(fields, elog.FieldTid(etrace.ExtractTraceID(ctx.Context.Context())))
 			}
+
+			config.mu.RLock()
+			if config.EnableAccessInterceptorReq {
+				fields = append(fields, elog.Any("req", map[string]interface{}{
+					"metadata": ctx.Req().Header,
+					"payload":  rb.String(),
+				}))
+			}
+
+			if config.EnableAccessInterceptorRes && ok {
+				fields = append(fields, elog.Any("res", map[string]interface{}{
+					"metadata": ctx.Header(),
+					"payload":  rw.body.String(),
+				}))
+			}
+			config.mu.RUnlock()
 
 			// slow log
 			if config.SlowLogThreshold > time.Duration(0) && config.SlowLogThreshold < cost {
@@ -73,9 +160,9 @@ func recoverMiddleware(logger *elog.Component, config *Config) restful.FilterFun
 
 				if brokenPipe {
 					// If the connection is dead, we can't write a status to it.
-					_ = resp.WriteError(http.StatusInternalServerError, rec.(error)) // nolint: errcheck
+					_ = ctx.WriteError(http.StatusInternalServerError, rec.(error)) // nolint: errcheck
 				} else {
-					resp.WriteHeader(http.StatusInternalServerError)
+					ctx.WriteHeader(http.StatusInternalServerError)
 				}
 
 				event = "recover"
@@ -85,22 +172,23 @@ func recoverMiddleware(logger *elog.Component, config *Config) restful.FilterFun
 					elog.FieldEvent(event),
 					zap.ByteString("stack", stackInfo),
 					elog.FieldErrAny(rec),
-					elog.FieldCode(int32(resp.StatusCode())),
-					elog.FieldUniformCode(int32(resp.StatusCode())),
+					elog.FieldCode(int32(ctx.StatusCode())),
+					elog.FieldUniformCode(int32(ctx.StatusCode())),
 				)
 				logger.Error("access", fields...)
 				return
 			}
-
-			fields = append(fields,
-				elog.FieldEvent(event),
-				elog.FieldErrAny(""),
-				elog.FieldCode(int32(resp.StatusCode())),
-			)
-			logger.Info("access", fields...)
+			if config.EnableAccessInterceptor {
+				fields = append(fields,
+					elog.FieldEvent(event),
+					elog.FieldErrAny(ctx.Error()),
+					elog.FieldCode(int32(ctx.StatusCode())),
+				)
+				logger.Info("access", fields...)
+			}
 		}()
-		chain.ProcessFilter(req, resp)
-	}
+		ctx.ProcessFilter()
+	})
 }
 
 // stack returns a nicely formatted stack frame, skipping skip frames.
@@ -165,53 +253,38 @@ func function(pc uintptr) []byte {
 }
 
 func metricServerInterceptor() restful.FilterFunction {
-	return func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
+	return Filter(func(ctx FilterContext) {
 		beg := time.Now()
-		chain.ProcessFilter(req, resp)
-		emetric.ServerHandleHistogram.Observe(time.Since(beg).Seconds(), emetric.TypeHTTP, req.Request.Method+"."+req.Request.URL.Path, extractAPP(req))
-		emetric.ServerHandleCounter.Inc(emetric.TypeHTTP, req.Request.Method+"."+req.Request.URL.Path, extractAPP(req), http.StatusText(resp.StatusCode()), http.StatusText(resp.StatusCode()))
-	}
+		ctx.ProcessFilter()
+		emetric.ServerHandleHistogram.Observe(time.Since(beg).Seconds(), emetric.TypeHTTP, ctx.Req().Method+"."+ctx.SelectedRoutePath(), extractAPP(ctx.Request))
+		emetric.ServerHandleCounter.Inc(emetric.TypeHTTP, ctx.Req().Method+"."+ctx.SelectedRoutePath(), extractAPP(ctx.Request), http.StatusText(ctx.StatusCode()), http.StatusText(ctx.StatusCode()))
+	})
 }
 
+// traceServerInterceptor 开启链路追踪，默认开启
 func traceServerInterceptor() restful.FilterFunction {
-	return func(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
-		span, ctx := etrace.StartSpanFromContext(
-			req.Request.Context(),
-			req.Request.Method+"."+req.Request.URL.Path,
-			etrace.TagComponent("http"),
-			etrace.TagSpanKind("server"),
-			etrace.HeaderExtractor(req.Request.Header),
-			etrace.CustomTag("http.url", req.Request.URL.Path),
-			etrace.CustomTag("http.method", req.Request.Method),
-			etrace.CustomTag("peer.ipv4", clientIP(req)),
+	tracer := etrace.NewTracer(trace.SpanKindServer)
+	attrs := []attribute.KeyValue{
+		semconv.RPCSystemKey.String("http"),
+	}
+	return Filter(func(c FilterContext) {
+		// 该方法会在v0.9.0移除
+		etrace.CompatibleExtractHTTPTraceID(c.Req().Header)
+		ctx, span := tracer.Start(c.Context.Context(), c.Req().Method+"."+c.Request.SelectedRoutePath(), propagation.HeaderCarrier(c.Req().Header), trace.WithAttributes(attrs...))
+		span.SetAttributes(
+			semconv.HTTPURLKey.String(c.Req().URL.String()),
+			semconv.HTTPTargetKey.String(c.Req().URL.Path),
+			semconv.HTTPMethodKey.String(c.Req().Method),
+			semconv.HTTPUserAgentKey.String(c.Req().UserAgent()),
+			semconv.HTTPClientIPKey.String(c.ClientIP()),
+			etrace.CustomTag("http.full_path", c.Request.SelectedRoutePath()),
 		)
-		req.Request = req.Request.WithContext(ctx)
-		defer span.Finish()
-		// 判断了全局jaeger的设置，所以这里一定能够断言为jaeger
-		resp.AddHeader(eapp.EgoTraceIDName(), span.(*jaeger.Span).Context().(jaeger.SpanContext).TraceID().String())
-		chain.ProcessFilter(req, resp)
-	}
-}
-
-// IP returns the IP address of request.
-func clientIP(req *restful.Request) string {
-	var ip string
-	ra := req.Request.RemoteAddr
-	if ip = req.HeaderParameter("X-Forwarded-For"); ip != "" {
-		ra = strings.Split(ip, ", ")[0]
-	} else if ip = req.HeaderParameter("X-Real-IP"); ip != "" {
-		ra = ip
-	} else {
-		ra, _, _ = net.SplitHostPort(ra)
-	}
-	return ra
-}
-
-// 获取对端ip
-func getPeerIP(addr string) string {
-	addSlice := strings.Split(addr, ":")
-	if len(addSlice) > 1 {
-		return addSlice[0]
-	}
-	return ""
+		c.Context.Request.Request = c.Req().WithContext(ctx)
+		c.Response.AddHeader(eapp.EgoTraceIDName(), span.SpanContext().TraceID().String())
+		c.ProcessFilter()
+		span.SetAttributes(
+			semconv.HTTPStatusCodeKey.Int64(int64(c.Response.StatusCode())),
+		)
+		span.End()
+	})
 }
