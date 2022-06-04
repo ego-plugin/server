@@ -31,7 +31,7 @@ var (
 	protoRegex = regexp.MustCompile(`(?i)(?:proto=)(https|http)`)
 )
 
-func ProxyIpMiddleware(logger *elog.Component, config *Config) restful.FilterFunction {
+func filterProxyIp(logger *elog.Component, config *Config) restful.FilterFunction {
 	return Filter(func(ctx FilterContext) {
 		// Set the remote IP with the value passed from the proxy.
 		ip := getIP(ctx.Req())

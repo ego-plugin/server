@@ -2,19 +2,12 @@ package eref
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/emicklei/go-restful/v3"
-	"github.com/gotomicro/ego/core/eapp"
 	"github.com/gotomicro/ego/core/elog"
-	"github.com/gotomicro/ego/core/emetric"
 	"github.com/gotomicro/ego/core/etrace"
 	"github.com/opentracing/opentracing-go"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
-	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"io"
 	"io/ioutil"
@@ -33,11 +26,6 @@ var (
 	slash     = []byte("/")
 )
 
-// extractAPP 提取header头中的app信息
-func extractAPP(req *restful.Request) string {
-	return req.Request.Header.Get("app")
-}
-
 type resWriter struct {
 	restful.EntityReaderWriter
 	body *bytes.Buffer
@@ -54,33 +42,9 @@ func (w *resWriter) Write(resp *restful.Response, status int, v interface{}) err
 	return w.EntityReaderWriter.Write(resp, status, v)
 }
 
-// timeout middleware wraps the request context with a timeout
-func timeoutMiddleware(timeout time.Duration) restful.FilterFunction {
-	return Filter(func(c FilterContext) {
-		// 若无自定义超时设置，默认设置超时
-		_, ok := c.Req().Context().Deadline()
-		if ok {
-			c.ProcessFilter()
-			return
-		}
-
-		// wrap the request context with a timeout
-		ctx, cancel := context.WithTimeout(c.Req().Context(), timeout)
-		defer func() {
-			// check if context timeout was reached
-			if ctx.Err() == context.DeadlineExceeded {
-				// write response and abort the request
-				c.Response.WriteHeader(http.StatusGatewayTimeout)
-				c.FilterChain.Index = 63
-			}
-			//cancel to clear resources after finished
-			cancel()
-		}()
-
-		// replace request with context wrapped request
-		c.Request.Request = c.Req().WithContext(ctx)
-		c.ProcessFilter()
-	})
+// extractAPP 提取header头中的app信息
+func extractAPP(req *restful.Request) string {
+	return req.Request.Header.Get("app")
 }
 
 // recoverMiddleware 恢复拦截器，记录500信息，以及慢日志信息
@@ -250,41 +214,4 @@ func function(pc uintptr) []byte {
 	}
 	name = bytes.Replace(name, centerDot, dot, -1)
 	return name
-}
-
-func metricServerInterceptor() restful.FilterFunction {
-	return Filter(func(ctx FilterContext) {
-		beg := time.Now()
-		ctx.ProcessFilter()
-		emetric.ServerHandleHistogram.Observe(time.Since(beg).Seconds(), emetric.TypeHTTP, ctx.Req().Method+"."+ctx.SelectedRoutePath(), extractAPP(ctx.Request))
-		emetric.ServerHandleCounter.Inc(emetric.TypeHTTP, ctx.Req().Method+"."+ctx.SelectedRoutePath(), extractAPP(ctx.Request), http.StatusText(ctx.StatusCode()), http.StatusText(ctx.StatusCode()))
-	})
-}
-
-// traceServerInterceptor 开启链路追踪，默认开启
-func traceServerInterceptor() restful.FilterFunction {
-	tracer := etrace.NewTracer(trace.SpanKindServer)
-	attrs := []attribute.KeyValue{
-		semconv.RPCSystemKey.String("http"),
-	}
-	return Filter(func(c FilterContext) {
-		// 该方法会在v0.9.0移除
-		etrace.CompatibleExtractHTTPTraceID(c.Req().Header)
-		ctx, span := tracer.Start(c.Context.Context(), c.Req().Method+"."+c.Request.SelectedRoutePath(), propagation.HeaderCarrier(c.Req().Header), trace.WithAttributes(attrs...))
-		span.SetAttributes(
-			semconv.HTTPURLKey.String(c.Req().URL.String()),
-			semconv.HTTPTargetKey.String(c.Req().URL.Path),
-			semconv.HTTPMethodKey.String(c.Req().Method),
-			semconv.HTTPUserAgentKey.String(c.Req().UserAgent()),
-			semconv.HTTPClientIPKey.String(c.ClientIP()),
-			etrace.CustomTag("http.full_path", c.Request.SelectedRoutePath()),
-		)
-		c.Context.Request.Request = c.Req().WithContext(ctx)
-		c.Response.AddHeader(eapp.EgoTraceIDName(), span.SpanContext().TraceID().String())
-		c.ProcessFilter()
-		span.SetAttributes(
-			semconv.HTTPStatusCodeKey.Int64(int64(c.Response.StatusCode())),
-		)
-		span.End()
-	})
 }

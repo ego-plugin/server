@@ -1,7 +1,6 @@
 package eref
 
 import (
-	"embed"
 	"fmt"
 	"github.com/gotomicro/ego/core/eflag"
 	"github.com/gotomicro/ego/core/util/xtime"
@@ -14,6 +13,9 @@ type Config struct {
 	Host                       string // IP地址，默认0.0.0.0
 	Port                       int    // PORT端口，默认9001
 	Network                    string
+	ServerReadTimeout          time.Duration // 服务端，用于读取io报文过慢的timeout，通常用于互联网网络收包过慢，如果你的go在最外层，可以使用他，默认不启用。
+	ServerReadHeaderTimeout    time.Duration // 服务端，用于读取io报文过慢的timeout，通常用于互联网网络收包过慢，如果你的go在最外层，可以使用他，默认不启用。
+	ServerWriteTimeout         time.Duration // 服务端，用于读取io报文过慢的timeout，通常用于互联网网络收包过慢，如果你的go在最外层，可以使用他，默认不启用。
 	ContextTimeout             time.Duration // 只能用于IO操作，才能触发，默认不启用
 	EnableMetricInterceptor    bool          // 是否开启监控，默认开启
 	EnableTraceInterceptor     bool          // 是否开启链路追踪，默认开启
@@ -28,8 +30,6 @@ type Config struct {
 	WebsocketWriteBufferSize   int           // WebsocketWriteBufferSize
 	EnableWebsocketCompression bool          // 是否开通压缩
 	EnableWebsocketCheckOrigin bool          // 是否支持跨域
-	EmbedPath                  string        // 嵌入embed path数据
-	embedFs                    embed.FS      // 需要在build时候注入embed.Fs
 	mu                         sync.RWMutex  // mutex for EnableAccessInterceptorReq、EnableAccessInterceptorRes、AccessInterceptorReqResFilter、aiReqResCelPrg
 }
 

@@ -2,6 +2,7 @@ package eref
 
 import (
 	"github.com/emicklei/go-restful/v3"
+	"net/http"
 )
 
 // WebService holds a collection of Route values that bind a Http Method + URL Path to a function.
@@ -31,4 +32,8 @@ func (w *WebService) Build() {
 	for _, v := range w.v {
 		restful.DefaultContainer.Add(v)
 	}
+}
+
+func WebHandle(pattern string, handler http.HandlerFunc) {
+	restful.DefaultContainer.ServeMux.Handle(pattern, handler)
 }

@@ -51,7 +51,7 @@ func Load(key string) *Container {
 func (c *Container) Build() *Component {
 	server := newComponent(c.name, c.config, c.logger)
 	// 修正反代理IP
-	restful.Filter(ProxyIpMiddleware(c.logger, c.config))
+	restful.Filter(filterProxyIp(c.logger, c.config))
 	// 错误恢复
 	restful.Filter(recoverMiddleware(c.logger, c.config))
 	if c.config.ContextTimeout > 0 {
