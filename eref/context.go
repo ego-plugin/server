@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/ego-plugin/binding"
 	"github.com/emicklei/go-restful/v3"
+	"github.com/gotomicro/ego/core/elog"
 	"net"
 	"net/http"
 	"strings"
@@ -12,6 +13,7 @@ import (
 type Context struct {
 	*restful.Request
 	*restful.Response
+	Log *elog.Component
 }
 
 func (c Context) BindQuery(v any) error {
@@ -67,6 +69,7 @@ func RouteContext(f RouteContextFunc) restful.RouteFunction {
 		c := Context{
 			Request:  req,
 			Response: resp,
+			Log:      comp.logger,
 		}
 		f(c)
 	}
