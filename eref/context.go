@@ -6,6 +6,7 @@ import (
 	"github.com/emicklei/go-restful/v3"
 	"net"
 	"net/http"
+	"strings"
 )
 
 type Context struct {
@@ -71,9 +72,9 @@ func RouteContext(f RouteContextFunc) restful.RouteFunction {
 	}
 }
 
-func NewRoute(prefixUrl string) *restful.WebService {
+func NewRoute(prefixUrl ...string) *restful.WebService {
 	ws := new(restful.WebService)
-	return ws.Path(prefixUrl).Consumes(restful.MIME_JSON).Produces(restful.MIME_JSON)
+	return ws.Path(strings.Join(prefixUrl, "")).Consumes(restful.MIME_JSON).Produces(restful.MIME_JSON)
 }
 
 // FilterContext 中间件上下文
